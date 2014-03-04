@@ -4,11 +4,15 @@
 Post-process Profiler dumps and generate graphs.
 """
 
+
+from __future__ import print_function
+
 import argparse
 from datetime import datetime
 import math
 import os
 import subprocess
+import sys
 import tempfile
 from time import mktime
 
@@ -16,35 +20,35 @@ import StackTree
 from StackTree import count_spaces
 
 
-class Markers(object):
-    """Traks strings and returns shorter markers."""
+class _Markers(object):
+    """Tracks strings and returns shorter markers."""
     def __init__(self):
-        self.mark_ = 0
-        self.map = {}
+        self._mark = 0
+        self._map = {}
 
-    def nextMark_(self):
-        self.mark_ += 1
+    def _getMark(self):
+        return str(self._mark)
 
-    def getMark_(self):
-        return str(self.mark_)
+    def _nextMark(self):
+        self._mark += 1
 
     def newMark(self, element, profile=None):
         profile = profile + ">" if profile else ""
-        mark    = self.getMark_()
-        self.map[mark] = profile + element
-        self.nextMark_()
+        mark    = self._getMark()
+        self._map[mark] = profile + element
+        self._nextMark()
         return mark
 
     def getElement(self, mark):
-        return self.map[mark]
+        return self._map[mark]
 
     def iter(self):
-        return self.map.keys()
+        return self._map.keys()
 
 
-# Daf file parsers.
-def parse_datetime(string):
-    """Convert a user friendly time string into a UNIX timestamp."""
+# Define file parsers.
+def _parse_datetime(string):
+    """Convert a user friendly time string into a UNIX timestamps."""
     if string is None:
         return ""
     with_date = ["%d/%m/%Y %H:%M", "%d/%m/%y %H:%M", "%d/%m/%Y", "%d/%m/%y"]
@@ -69,12 +73,12 @@ def parse_datetime(string):
     raise ValueError()
 
 
-def parse_process_memory(line):
+def _parse_process_memory(line):
     (time, mem) = line.split("#")
     return (time, int(mem))
 
 
-def parse_thread_memory(line, timed):
+def _parse_thread_memory(line, timed):
     if timed:
         (time, line) = line.split("#")
         time = float(time)
@@ -84,7 +88,7 @@ def parse_thread_memory(line, timed):
     return (time, name, int(mem))
 
 
-def parse_thread_stack(line, timed):
+def _parse_thread_stack(line, timed):
     (level, line) = count_spaces(line)
     if timed:
         (time, line) = line.split("#")
@@ -95,7 +99,7 @@ def parse_thread_stack(line, timed):
 
 
 # Processing functions.
-def mem_processor(args):
+def memg(args):
     """Graphs the memory usage of each thread and the process.
 
     Converts the given files into a gnuplot compatible format
@@ -104,14 +108,14 @@ def mem_processor(args):
 
     The files must meet the following assumptions:
       * Each line in non-empty files has the form TIME#NAME=>MEM
-          where TIME# is a unix timestamp, which is required if --time is set
+          where TIME# is a Unix timestamp, which is required if --time is set
           and must be omitted it otherwise, and MEM is in bytes.
-      * The exception to the roule above is a file called "process.*".
+      * The exception to the rule above is a file called "process.*".
           In this file the lines must be TIME#MEM
           where TIME# is always required and MEM is, again, in bytes.
     """
     # Process lines and store them in a temporary file.
-    marks = Markers()
+    marks = _Markers()
     temps = []
     peaks = []
     for profile in args.files:
@@ -119,28 +123,28 @@ def mem_processor(args):
         if thread == "process":
             if args.no_process:
                 continue
-            print("Processing data for the process")
+            print("Processing data for the process", file=sys.stderr)
             with open(profile) as f:
                 data = tempfile.NamedTemporaryFile(mode="w")
                 for line in f:
-                    line = line.rsplit()
+                    line = line.rstrip()
                     try:
-                        (time, mem) = parse_process_memory(line)
+                        (time, mem) = _parse_process_memory(line)
                         mem = int(mem) / 1024
                     except ValueError:
-                        print("Unable to parse a line")
+                        print("Unable to parse a line", file=sys.stderr)
                         continue
                     mem -= args.process_rebase
                     data.write("{0} {1}\n".format(time, mem))
                 temps.append((data, "Process"))
             continue
-        print("Processing data for thread " + thread)
+        print("Processing data for thread " + thread, file=sys.stderr)
         with open(profile) as f:
             zero_insert = False  # Used to remove duplicate zero points after a non-zero point.
             prev_zero = None  # A zero point should be added before the current point:
                               #   if there is a sequence of zero values we should plot the
                               #   first and last zeros but not the ones in the middle.
-                              #   The first is needed to prevent missleading graphs, the last
+                              #   The first is needed to prevent misleading graphs, the last
                               #   is to prevent strange lines cutting the graph.
             index = 0  # Used to convert file:line:function to a number.
                        # Although file:line:function has more meaning, it is impossible to see in the plot.
@@ -148,16 +152,16 @@ def mem_processor(args):
             for line in f:
                 line = line.rstrip()
                 try:
-                    (time, name, mem) = parse_thread_memory(line, args.time)
+                    (time, name, mem) = _parse_thread_memory(line, args.time)
                     mem = int(mem)
                 except ValueError:
-                    print("Unable to parse a line.")
+                    print("Unable to parse a line.", file=sys.stderr)
                     continue
                 if mem or zero_insert:
                     if prev_zero:
                         data.write('{0} {1}\n'.format(prev_zero or index, 0))
                         prev_zero = None
-                    kmem = mem / 1024  # Conver B to KB
+                    kmem = mem / 1024  # Convert B to KB
                     if args.cap and abs(kmem) > args.cap:
                         kmem = math.copysign(args.cap, kmem)
                     data.write('{0} {1}\n'.format(time or index, kmem))
@@ -173,7 +177,7 @@ def mem_processor(args):
                 temps.append((data, thread))
             else:
                 data.close()
-    # If time is avaialble sort all peaks and filter the list to avoit overlaps.
+    # If time is available sort all peaks and filter the list to avoid overlaps.
     if args.time and peaks:
         sorted_peaks = sorted(peaks)
         peaks = [sorted_peaks[0]]
@@ -190,8 +194,8 @@ def mem_processor(args):
     if args.time:
         plot.write('set xdata time\n')
         plot.write('set timefmt "%s"\n')
-        tfrom = parse_datetime(args.time_from)
-        tto = parse_datetime(args.time_to)
+        tfrom = _parse_datetime(args.time_from)
+        tto = _parse_datetime(args.time_to)
         if tfrom or tto:
             plot.write('set xrange [{0}:{1}]\n'.format(tfrom, tto))
     for (i, v, m) in peaks:
@@ -207,7 +211,8 @@ def mem_processor(args):
                    .format(temps[-1][0].name, temps[-1][1]))
     # Create plot.
     plot.flush()
-    gnuplot = subprocess.Popen(['gnuplot', plot.name])
+    print("Running gnuplot.", file=sys.stderr)
+    gnuplot = subprocess.Popen(["gnuplot", plot.name])
     gnuplot.wait()
     for (temp, _) in temps:
         temp.close()
@@ -215,8 +220,8 @@ def mem_processor(args):
     legend.close()
 
 
-def mem_histogram(args):
-    """Highligths most allocating and freeing functions.
+def memh(args):
+    """Highlights most allocating and freeing functions.
 
     Converts the given files into a gnuplot compatible format
     then calls gnuplot to create the graph.
@@ -224,9 +229,9 @@ def mem_histogram(args):
 
     The files must meet the following assumptions:
       * Each line in non-empty files has the form TIME#NAME=>MEM
-          where TIME# is a unix timestamp, which is required if --time is set
+          where TIME# is a Unix timestamp, which is required if --time is set
           and must be omitted it otherwise, and MEM is in bytes.
-      * The exception to the roule above is a file called "process.*" which is ignored.
+      * The exception to the rule above is a file called "process.*" which is ignored.
     """
     # Build bins.
     bins = {}
@@ -234,11 +239,11 @@ def mem_histogram(args):
         thread = os.path.basename(profile).rsplit(".", 1)[0]
         if thread == "process":
             continue
-        print("Processing data for thread " + thread)
+        print("Processing data for thread " + thread, file=sys.stderr)
         with open(profile) as f:
             for line in f:
                 line = line.rstrip()
-                (time, name, mem) = parse_thread_memory(line, args.time)
+                (time, name, mem) = _parse_thread_memory(line, args.time)
                 mem = int(mem) / 1024
                 bins[name] = bins.get(name, 0) + mem
     # Write them to file.
@@ -247,7 +252,7 @@ def mem_histogram(args):
         return (v, k)
     histo = sorted(bins.items(), key=key)
     data = tempfile.NamedTemporaryFile(mode="w")
-    marks = Markers()
+    marks = _Markers()
     for (name, mem) in histo[:30]:
         data.write('"{0}" {1}\n'.format(marks.newMark(name), mem))
     for (name, mem) in histo[-30:]:
@@ -266,7 +271,8 @@ def mem_histogram(args):
     legend.close()
     # Create plot.
     plot.flush()
-    gnuplot = subprocess.Popen(['gnuplot', plot.name])
+    print("Running gnuplot.", file=sys.stderr)
+    gnuplot = subprocess.Popen(["gnuplot", plot.name])
     gnuplot.wait()
     plot.close()
     data.close()
@@ -281,19 +287,19 @@ def nesting(args):
     The files must meet the following assumptions:
       * Each line in non-empty files has the form SPACESTIME#.*
           where SPACES is a sequence of spaces, one for each stack level,
-          TIME# is a unix timestamp, which is required if --time is set
+          TIME# is a Unix timestamp, which is required if --time is set
           and must be omitted it otherwise, and .* is anything (and is ignored).
     """
     temps = []
     for profile in args.files:
         thread = os.path.basename(profile).rsplit(".", 1)[0]
-        print("Processing data for thread " + thread)
+        print("Processing data for thread " + thread, file=sys.stderr)
         with open(profile) as f:
             data = tempfile.NamedTemporaryFile(mode="w")
             index = 0
             for line in f:
                 line = line.rstrip()
-                (level, time, name) = parse_thread_stack(line, args.time)
+                (level, time, name) = _parse_thread_stack(line, args.time)
                 data.write("{0} {1}\n".format(time if time else index, level))
                 index += 1
             if index:
@@ -316,6 +322,7 @@ def nesting(args):
                .format(temps[-1][0].name, temps[-1][1]))
     # Create plot.
     plot.flush()
+    print("Running gnuplot.", file=sys.stderr)
     gnuplot = subprocess.Popen(['gnuplot', plot.name])
     gnuplot.wait()
     for (temp, _) in temps:
@@ -332,8 +339,8 @@ def interleave(args):
 
     The files must meet the following assumptions:
       * Each line in non-empty file has the form TIME#.*
-          where TIME# is a unix timestamp and .* is ignored.
-      * The exception to the roule above is a file called "process.*" which is ignored.
+          where TIME# is a Unix timestamp and .* is ignored.
+      * The exception to the rule above is a file called "process.*" which is ignored.
     """
     def fold(items):
         """Removes all consecutive thread events except the first and last."""
@@ -368,11 +375,11 @@ def interleave(args):
             continue
         threads[thread] = thread_id
         thread_id += 1
-        print("Processing data for thread " + thread)
+        print("Processing data for thread " + thread, file=sys.stderr)
         with open(profile) as f:
             for line in f:
                 line = line.rstrip()
-                (time, _, _) = parse_thread_memory(line, True)
+                (time, _, _) = _parse_thread_memory(line, True)
                 times.append((time, thread))
                 used = True
     times = split(fold(sorted(times)))
@@ -386,10 +393,14 @@ def interleave(args):
     # Create plot definition.
     plot = tempfile.NamedTemporaryFile(mode="w")
     legend = open("interleave.txt", "w")
-    plot.write('set term svg size 1920,1080\n')
-    plot.write('set output "interleave.svg"\n')
+    plot.write('set term png size 1920,1080\n')
+    plot.write('set output "interleave.png"\n')
     plot.write('set xdata time\n')
     plot.write('set timefmt "%s"\n')
+    tfrom = _parse_datetime(args.time_from)
+    tto = _parse_datetime(args.time_to)
+    if tfrom or tto:
+        plot.write('set xrange [{0}:{1}]\n'.format(tfrom, tto))
     plot.write('plot ')
     for (temp, thread) in temps[:-1]:
         plot.write('"{0}" using 1:2 with points title "{1}", \\\n'
@@ -400,6 +411,7 @@ def interleave(args):
         legend.write("{1}: {0}\n".format(tname, threads[tname]))
     # Create plot.
     plot.flush()
+    print("Running gnuplot.", file=sys.stderr)
     gnuplot = subprocess.Popen(['gnuplot', plot.name])
     gnuplot.wait()
     for (temp, _) in temps:
@@ -417,7 +429,7 @@ def decorate_stack(args):
         is_event_line_number = True
     except ValueError:
         pass
-    print("Scanning memory file looking for the event.")
+    print("Scanning memory file looking for the event.", file=sys.stderr)
     mem_to_reverse = tempfile.NamedTemporaryFile()
     event_file_name = ""
     event_function_name = ""
@@ -428,20 +440,20 @@ def decorate_stack(args):
             line = line.rstrip()
             mem_to_reverse.write("{0}\n".format(line))
             index += 1
-            if ((is_event_line_number and index > max_line) or
+            if ((is_event_line_number and index >= max_line) or
                 line == args.event):
                 break;
         mem_to_reverse.flush()
-        (mem_time, name, _) = parse_thread_memory(line, True)
+        (mem_time, name, _) = _parse_thread_memory(line, True)
         (event_file_name, _, event_function_name) = name.split(":")
-    print("Scanning stack file looking for a matching event.")
+    print("Scanning stack file looking for a matching event.", file=sys.stderr)
     stack_to_analize = tempfile.NamedTemporaryFile()
     with open(args.stack) as f:
         looking_for_start = True
         base_trace_level = 0
         for line in f:
             line = line.rstrip()
-            (level, stack_time, name) = parse_thread_stack(line, True)
+            (level, stack_time, name) = _parse_thread_stack(line, True)
             (file_name, _, function_name) = name.split(":")
             if looking_for_start and stack_time > mem_time:
                     raise Exception("Unable to find event in stack trace.")
@@ -466,57 +478,75 @@ def decorate_stack(args):
                     data = line[base_trace_level:]
                     stack_to_analize.write("{0}\n".format(data))
         stack_to_analize.flush()
-    print("Reversing memory events of interest.")
+    print("Reversing memory events of interest.", file=sys.stderr)
     reversed_mem = tempfile.NamedTemporaryFile()
     reverse = subprocess.Popen([args.reverse, mem_to_reverse.name], stdout=reversed_mem)
     reverse.wait()
     mem_to_reverse.close()
-    print("Parsing stack trace into a tree.")
+    print("Parsing stack trace into a tree.", file=sys.stderr)
     stack_to_analize.seek(0)
     reversed_mem.seek(0)
-    def decorator(node):
-        mem_line = reversed_mem.readline().rstrip()
-        (end_time, end_name, mem) = parse_thread_memory(mem_line, True)
-        (_, start_time, start_name) = parse_thread_stack(node.value(), True)
+
+    def attach_memory_line(node):
+        node.store("mem-line", reversed_mem.readline().rstrip())
+
+    def print_decorate_trace(node):
+        mem_line = node.get("mem-line")
+        (end_time, end_name, mem) = _parse_thread_memory(mem_line, True)
+        (_, start_time, start_name) = _parse_thread_stack(node.value(), True)
         (file_name, end_line, function_name) = end_name.split(":")
         (_, start_line, _) = start_name.split(":")
-        delta = (end_time - start_time) * 1000
-        indent = "".join([" "] * node.level())
-        print("{0}{1}@{2}:{3}-{4}, Time: {5} ms, Memory: {6} B".format(
+        delta = end_time - start_time
+        indent = "".join([args.indent] * node.level())
+        if args.prefix and file_name.startswith(args.prefix):
+            file_name = file_name[len(args.prefix):]
+        print("{0}{1}@{2}:{3}-{4}, Time: {5} s, Memory: {6} B".format(
             indent, function_name, file_name, start_line, end_line, delta, mem))
 
     tree = StackTree.build_from_file(stack_to_analize)
-    tree.reverse_traverse(decorator)
+    print("Reconciling trace and memory.", file=sys.stderr)
+    tree.reverse_traverse(attach_memory_line)
+    print("Decorating trace.", file=sys.stderr)
+    tree.traverse(print_decorate_trace)
     # Clean up.
     reversed_mem.close()
     stack_to_analize.close()
 
 
 # Command line parsers.
-def common_parser(parser, function=None):
-    """Porulates a parser with the generic command options."""
+def _common_parser(parser, function=None):
+    """Populates a parser with the generic command options."""
     parser.add_argument("files", metavar="FILE", nargs="+", help="The dump files to process.")
     if function:
         parser.set_defaults(process=function)
 
+def _time_parser(parser):
+    parser.add_argument("--time_from", action="store", default=None,
+                        help="Initial time for the range passed to gnuplot.")
+    parser.add_argument("--time_to", action="store", default=None,
+                        help="Final time for the range passed to gnuplot.")
 
-def memg_parser(parser):
-    """Porulates a parser with the memg command options."""
+
+def _interleave_parser(parser):
+    """Populates a parser with the memg command options."""
+    _time_parser(parser)
+    _common_parser(parser)
+    parser.set_defaults(process=interleave)
+
+
+def _memg_parser(parser):
+    """Populates a parser with the memg command options."""
     def parse_delta(time):
         return int(time) * 1000
 
     parser.add_argument("--cap", action="store", default=None, type=int,
                         help="Caps memory peaks to the given value.")
     parser.add_argument("--no_process", action="store_true", default=False,
-                        help="Ignore process-wide memory data if avaialble.")
+                        help="Ignore process-wide memory data if available.")
     parser.add_argument(
         "--process_rebase", action="store", default=30000, type=int,
-        help=("Reduce the process memory by the given ammount "
+        help=("Reduce the process memory by the given amount "
         "(in KB). Helps to see small memory fluctuations in threads."))
-    parser.add_argument("--time_from", action="store", default=None,
-                        help="Initial time for the range passed to gnuplot.")
-    parser.add_argument("--time_to", action="store", default=None,
-                        help="Final time for the range passed to gnuplot.")
     parser.add_argument(
         "--peak", action="store", default=200, type=int,
         help="Memory deltas exceeding this size (in KB) are considered peaks.")
@@ -528,14 +558,21 @@ def memg_parser(parser):
         "--peak_delta_value", action="store", default=500, type=int,
         help=("Prevent two peeks too close in memory to be marked. Helps keep "
               "the graphs readable."))
-    common_parser(parser)
-    parser.set_defaults(process=mem_processor)
+    _time_parser(parser)
+    _common_parser(parser)
+    parser.set_defaults(process=memg)
 
 
-def decorate_stack_parser(parser):
+def _decorate_stack_parser(parser):
+    parser.add_argument(
+        "--indent", action="store", default=" ",
+        help="String used to indent trace levels.")
+    parser.add_argument(
+        "--prefix", action="store", default=None,
+        help="File names prefix to omit.")
     parser.add_argument(
         "--reverse", action="store", default="tac",
-        help=("Commad used to reverse usefull memory file portion."))
+        help="Command used to reverse useful memory file portion.")
     parser.add_argument("mem", action="store", help="Memory dump file.")
     parser.add_argument("stack", action="store", help="Stack dump file.")
     parser.add_argument("event", action="store", help=(
@@ -552,15 +589,15 @@ def main():
         help="Indicates that the dump files do not contain time information.")
     subparsers = parser.add_subparsers(help="Type of processing to do.")
 
-    memg_parser(subparsers.add_parser("memg", help="Graph per-thread memory profile."))
-    common_parser(subparsers.add_parser(
+    _memg_parser(subparsers.add_parser("memg", help="Graph per-thread memory profile."))
+    _common_parser(subparsers.add_parser(
         "memh", help=("Find functions with highest memory allocation and "
-                     "deallocation.")), mem_histogram)
-    common_parser(subparsers.add_parser(
+                     "deallocation.")), memh)
+    _common_parser(subparsers.add_parser(
         "nesting", help="Visualize stack trace nesting."), nesting)
-    common_parser(subparsers.add_parser(
-        "interleave", help="Visualize thread interleaveing."), interleave)
-    decorate_stack_parser(subparsers.add_parser(
+    _interleave_parser(subparsers.add_parser(
+        "interleave", help="Visualize thread interleaving."))
+    _decorate_stack_parser(subparsers.add_parser(
         "decorate-stack", help=("Decorate stack traces with the help of "
                                 "memory information.")))
 

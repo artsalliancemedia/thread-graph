@@ -1,7 +1,7 @@
 """
 (c) 2014 Arts Alliance Media
 
-Tree like representaion of a stack trace.
+Tree like representation of a stack trace.
 """
 
 
@@ -23,24 +23,36 @@ def count_spaces(string):
 class StackTree(object):
     """Represents a stack trace in a tree."""
     def __init__(self, level, value):
-        self.children_ = []
-        self.level_ = level
-        self.value_ = value
+        self._children = []
+        self._level = level
+        self._value = value
+        self._store = {}
 
     def append(self, level, value):
-        if level == self.level_ + 1:
+        if level == self._level + 1:
             node = StackTree(level, value)
-            self.children_.append(node)
+            self._children.append(node)
         else:
-            self.children_[-1].append(level, value)
+            self._children[-1].append(level, value)
+
+    def get(self, name):
+        return self._store[name]
 
     def level(self):
-        return self.level_
+        return self._level
 
     def reverse_traverse(self, function):
         function(self)
-        for c in reversed(self.children_):
+        for c in reversed(self._children):
            c.reverse_traverse(function)
+
+    def store(self, name, value):
+        self.store_[name] = value
+
+    def traverse(self, function):
+        function(self)
+        for c in self._children:
+           c.traverse(function)
 
     def value(self):
         return self.value_
@@ -48,7 +60,7 @@ class StackTree(object):
 def build_from_file(trace):
     line = trace.readline().rstrip()
     (top, value) = count_spaces(line)
-    assert top == 0, "build_from_file requires a top lavel stack trace."
+    assert top == 0, "build_from_file requires a top level stack trace."
     root = StackTree(top, value)
     for line in trace:
         line = line.rstrip()

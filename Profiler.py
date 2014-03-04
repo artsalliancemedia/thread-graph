@@ -10,45 +10,42 @@ from os import path
 import sys
 from time import time
 import threading
-import traceback
 
-#from pympler import muppy
 from pympler.process import ProcessMemoryInfo
 
 
-def getProcessMemory():
-    """Utility function that defind the logic to get memory."""
+def _getProcessMemory():
+    """Utility function that defined the logic to get memory."""
     return ProcessMemoryInfo().rss
-    #return muppy.get_size(muppy.get_objects())
 
 
-class ThreadLocals(object):
-    """Storage class for thread-local infirmation.
+class _ThreadLocals(object):
+    """Storage class for thread-local information.
 
-    Decorates threading.local with freandlier getters.
+    Decorates threading.local with friendlier getters.
     """
     def __init__(self, *args, **kwargs):
-        super(ThreadLocals, self).__init__(*args, **kwargs)
-        self.locals_ = threading.local()
+        super(_ThreadLocals, self).__init__(*args, **kwargs)
+        self._locals = threading.local()
 
-    def initialize(self):
+    def _initialize(self):
         """Initialization needs to be done once per-thread.
 
-        This also needs to be done in the thread requestig data and not
+        This also needs to be done in the thread requesting data and not
         in the thread creating the object.
-        To solve the problem each getter attemps to initialize the
+        To solve the problem each getter attempts to initialize the
         local variables and does it only once.
         """
         try:
-            return self.locals_.initialized
+            return self._locals.initialized
         except AttributeError:
-            self.locals_.initialized = True
-            self.locals_.thread_name = threading.current_thread().getName()
+            self._locals.initialized = True
+            self._locals.thread_name = threading.current_thread().getName()
             return True
 
     def getThreadName(self):
-        self.initialize()
-        return self.locals_.thread_name
+        self._initialize()
+        return self._locals.thread_name
 
 
 class ProcessProfile(object):
@@ -62,7 +59,7 @@ class ProcessProfile(object):
 
     Thread safety:
       Please not that this implementation uses a CPython implementation detail
-      to guarantee atomic maipulation of shared resources.
+      to guarantee atomic manipulation of shared resources.
       This detail is called "the global interpreter lock" and is explained in the
       python documentation: http://docs.python.org/3.4/glossary.html#term-global-interpreter-lock
 
@@ -83,29 +80,83 @@ class ProcessProfile(object):
             profile: type of events to profile, one of "c", "python" or "both".
         """
         super(ProcessProfile, self).__init__()
-        self.stream_factory_ = (stream_factory if stream_factory else
+        self._stream_factory = (stream_factory if stream_factory else
                                 self.default_stream_factory)
-        self.default_log_path_ = default_log_path if default_log_path else "."
-        self.profile_ = profile
-        self.threads_ = {}
-        self.previous_profiler_ = None
-        self.main_pid_ = getpid()
-        self.locals_ = ThreadLocals()  # Per-thread locals.
+        self._default_log_path = default_log_path if default_log_path else "."
+        self._profile = profile
+        self._threads = {}
+        self._previous_profiler = None
+        self._main_pid = getpid()
+        self._locals = _ThreadLocals()  # Per-thread locals.
 
         # Store process-level memory.
-        self.openProcessStream()
+        self._openProcessStream()
 
         # Store process-level tweeks.
-        self.proc_mem_check_ = 0
-        self.proc_mem_freq_ = 1000
-        self.profile_forked_ = False
+        self._proc_mem_check = 0
+        self._proc_mem_freq = 1000
+        self._profile_forked = False
 
         # Store defaults for new thread profilers.
-        self.filter_ = ""
-        self.mem_ = True
-        self.times_ = True
-        self.sleep_ = True
-        self.stack_ = False
+        self._filter = ""
+        self._mem = True
+        self._times = True
+        self._sleep = True
+        self._stack = False
+
+    def _dispatch(self, frame, event, arg):
+        """Dispatches the event to the appropriate thread profiler."""
+        try:
+            # When subprocesses are created they will share the profile
+            # function and open file descriptors.
+            # Check here if the PID changed and react appropriately.
+            if getpid() != self._main_pid:
+                if self._profile_forked:
+                    self._proc_mem.close()
+                    self._openProcessStream()
+                    self._threads = {}
+                    self._main_pid = getpid()
+                else:
+                    self.disable()
+                    return None
+
+            # Log process-level memory usage.
+            if self._proc_mem_freq:
+                if self._proc_mem_check == 0:
+                    stamp = str(time()) + "#" if self._times else ""
+                    self._proc_mem.write("{0}{1}\n".format(
+                        stamp, _getProcessMemory()))
+                    self._proc_mem.flush()
+                self._proc_mem_check = ((self._proc_mem_check + 1) %
+                                        self._proc_mem_freq)
+
+            # Dispatch to thread-level profiler.
+            thread = self._locals.getThreadName()
+            thread_stats = self._threads.get(thread)
+            if thread_stats is None:
+                thread_stats = ThreadProfile(
+                    stream_factory=self._stream_factory, profile=self._profile,
+                    track_memory=self._mem, track_times=self._times,
+                    track_stack=self._stack, track_sleep=self._sleep)
+                thread_stats.setFilter(self._filter)
+                self._threads[thread] = thread_stats
+            thread_stats._dispatch(frame, event, arg)
+            return self._dispatch
+        except Exception as e:
+            print(e)
+            raise
+        except:
+            # Python does not allow exceptions to be raised by the profile
+            # function and silently terminates the process if that happens.
+            # Catch all to prevent unexpected and unexplained terminations.
+            return self._dispatch
+
+    def _openProcessStream(self):
+        basepath = path.join(self._default_log_path, str(getpid()))
+        filename = path.join(basepath, "process.mem")
+        if not path.exists(basepath):
+            makedirs(basepath)
+        self._proc_mem = open(filename, "w")
 
     def default_stream_factory(self, stream_type):
         """Creates a file for each thread to log data to.
@@ -116,8 +167,8 @@ class ProcessProfile(object):
           stream_type: Type of information to be stored in the stream.
         """
         filename = "{0}.{1}".format(
-            self.locals_.getThreadName(), stream_type)
-        basepath = path.join(self.default_log_path_, str(getpid()))
+            self._locals.getThreadName(), stream_type)
+        basepath = path.join(self._default_log_path, str(getpid()))
         filename = path.join(basepath, filename)
         if not path.exists(basepath):
             makedirs(basepath)
@@ -125,94 +176,39 @@ class ProcessProfile(object):
 
     def disable(self):
         """Stop profiling the program and restore previous profile function."""
-        sys.setprofile(self.previous_profiler_)
-        threading.setprofile(self.previous_profiler_)
+        sys.setprofile(self._previous_profiler)
+        threading.setprofile(self._previous_profiler)
 
     def disableForkedProfile(self):
         """Do not profile processes forked off the current one."""
-        self.profile_forked_ = False
-
-    def dispatch(self, frame, event, arg):
-        """Dispatches the event to the appropaite thread profiler."""
-        try:
-            # When subprocesses are created they will share the profile
-            # function and open file descriptors.
-            # Check here if the PID changed and react appropriately.
-            if getpid() != self.main_pid_:
-                if self.profile_forked_:
-                    self.proc_mem_.close()
-                    self.openProcessStream()
-                    self.threads_ = {}
-                    self.main_pid_ = getpid()
-                else:
-                    self.disable()
-                    return None
-
-            # Log process-level memory usage.
-            if self.proc_mem_freq_:
-                if self.proc_mem_check_ == 0:
-                    stamp = str(time()) + "#" if self.times_ else ""
-                    self.proc_mem_.write("{0}{1}\n".format(
-                        stamp, getProcessMemory()))
-                    self.proc_mem_.flush()
-                self.proc_mem_check_ = ((self.proc_mem_check_ + 1) %
-                                        self.proc_mem_freq_)
-
-            # Dispatch to thread-level profiler.
-            thread = self.locals_.getThreadName()
-            thread_stats = self.threads_.get(thread)
-            if thread_stats is None:
-                thread_stats = ThreadProfile(
-                    stream_factory=self.stream_factory_, profile=self.profile_,
-                    track_memory=self.mem_, track_times=self.times_,
-                    track_stack=self.stack_, track_sleep=self.sleep_)
-                thread_stats.setFilter(self.filter_)
-                self.threads_[thread] = thread_stats
-            thread_stats.dispatch(frame, event, arg)
-            return self.dispatch
-        # Used to debug.
-        except Exception as e:
-            traceback.print_exc()
-            raise
-        except:
-            # Python does not allow exceptions to be raised by the profile
-            # function and silently terminates the process if that happens.
-            # Catch all to prevent unexpected and unexplained terminations.
-            return self.dispatch
+        self._profile_forked = False
 
     def enable(self):
         """Start profiling the program."""
-        self.previous_profiler_ = sys.getprofile()
-        threading.setprofile(self.dispatch)
-        sys.setprofile(self.dispatch)
+        self._previous_profiler = sys.getprofile()
+        threading.setprofile(self._dispatch)
+        sys.setprofile(self._dispatch)
 
     def enableForkedProfile(self):
         """Profile processes forked off the current one."""
-        self.profile_forked_ = True
+        self._profile_forked = True
 
     def logTimestamps(self, enable=True):
         """Enables or disables collection timestamps."""
-        self.times_ = enable
-        for thread in self.threads_.values():
+        self._times = enable
+        for thread in self._threads.values():
             thread.logTimestamps(enable)
-
-    def openProcessStream(self):
-        basepath = path.join(self.default_log_path_, str(getpid()))
-        filename = path.join(basepath, "process.mem")
-        if not path.exists(basepath):
-            makedirs(basepath)
-        self.proc_mem_ = open(filename, "w")
 
     def setFilter(self, filter):
         """Sets a file filter for new and running threads.
 
         When a function call is intercepted the filename in which it is defined
-        is checked against the filter. If the filter is a prifix of the
+        is checked against the filter. If the filter is a prefix of the
         function filename than the function is profiled, otherwise it is
         ignored. If no filter is defined all functions are profiled.
         """
-        self.filter_ = filter
-        for thread in self.threads_.values():
+        self._filter = filter
+        for thread in self._threads.values():
             thread.setFilter(filter)
 
     def setProcessMemoryFrequence(self, ferq):
@@ -225,36 +221,36 @@ class ProcessProfile(object):
 
         Set this value to None to disable process-level memory collection.
         """
-        self.proc_mem_freq_ = freq
+        self._proc_mem_freq = freq
 
     def trackMemory(self, enable=True):
-        """Enables or disables memory traking for new and running threads."""
-        self.mem_ = enable
-        for thread in self.threads_.values():
+        """Enables or disables memory tracking for new and running threads."""
+        self._mem = enable
+        for thread in self._threads.values():
             thread.trackMemory(enable)
 
     def trackSleeps(self, enable=True):
-        """Enables or disables sleep traking for new and running threads.
+        """Enables or disables sleep tracking for new and running threads.
 
-        When sleep traking is enabled the thread profiler will keep track of
+        When sleep tracking is enabled the thread profiler will keep track of
         memory allocated during a call to sleep and assumes that the memory
         was not allocated by this thread (since it was sleeping).
 
         When the profiler requests the current memory allocation, the
-        ammount of memory allocated during sleeps will be deducted.
+        amount of memory allocated during sleeps will be deducted.
         This provides an estimate of memory consumption at a thread level.
         Since the approach is not (and cannot be) accurate it can lead to
-        strange and/or inconsistent measurments.
-        If that happends you are encuraged to disable this feature.
+        strange and/or inconsistent measurements.
+        If that happens you are encouraged to disable this feature.
         """
-        self.mem_ = enable
-        for thread in self.threads_.values():
+        self._mem = enable
+        for thread in self._threads.values():
             thread.trackMemory(enable)
 
     def trackStack(self, enable=True):
-        """Enables or disables stack traking for new and running threads."""
-        self.stack_ = enable
-        for thread in self.threads_.values():
+        """Enables or disables stack tracking for new and running threads."""
+        self._stack = enable
+        for thread in self._threads.values():
             thread.trackStack(enable)
 
 
@@ -275,58 +271,59 @@ class ThreadProfile(object):
         """Creates a per-thread profiler.
 
         Args:
-            stream_factory: callable that returns a writable file.
+            stream_factory: callable that returns a writeable file.
             profile: choose what to profile, "c", "python" or "both".
         """
         dispatchers = {
             "c": {
-                "c_call": self.handleCIn_,
-                "c_exception": self.handleCOut_,
-                "c_return": self.handleCOut_
+                "c_call": self._handleCIn,
+                "c_exception": self._handleCOut,
+                "c_return": self._handleCOut
             },
             "python": {
-                "call": self.handleIn_,
-                "exception": self.handleOut_,
-                "return": self.handleOut_
+                "call": self._handleIn,
+                "exception": self._handleOut,
+                "return": self._handleOut
             },
             "both": {
-                "call": self.handleIn_,
-                "exception": self.handleOut_,
-                "return": self.handleOut_,
-                "c_call": self.handleCIn_,
-                "c_exception": self.handleCOut_,
-                "c_return": self.handleCOut_
+                "call": self._handleIn,
+                "exception": self._handleOut,
+                "return": self._handleOut,
+                "c_call": self._handleCIn,
+                "c_exception": self._handleCOut,
+                "c_return": self._handleCOut
             }
         }
-        self.dispatcher_ = dispatchers[profile if profile else "both"]
+        self._dispatcher = dispatchers[profile if profile else "both"]
 
         # Per-thread information used during collection.
-        self.frames_ = {}
-        self.sleep_accounting_ = 0
-        self.sleep_frames_ = {}
-        self.stack_level_ = 0
+        self._frames = {}
+        self._sleep_accounting = 0
+        self._sleep_frames = {}
+        self._stack_level = 0
 
         # Data collection tweeks.
-        self.file_filter_ = ""
-        self.mem_ = track_memory
-        self.times_ = track_times
-        self.stack_ = track_stack
-        self.sleep_trak_ = track_sleep
+        self._file_filter = ""
+        self._mem = track_memory
+        self._times = track_times
+        self._stack = track_stack
+
+        # Attempt to recognize context switch returns
+        # The idea is simple: if the return is from a function that is
+        # likely to trigger a context switch the memory delta registered
+        # at the return event is ignored from the thread memory usage.
+        self._sleep_trak = track_sleep
+        self._sleep_triggers = {
+            "time": set(["sleep"]),
+            #"/usr/lib/python2.6/threading.py": set(["acquire"])
+            None: set(["acquire"])  # For some reason acquire seems to belong to the None module.
+        }
 
         # Create required streams.
-        self.mem_stream_ = stream_factory("mem") if self.mem_ else None
-        self.stack_stream_ = stream_factory("stack") if self.stack_ else None
+        self._mem_stream = stream_factory("mem") if self._mem else None
+        self._stack_stream = stream_factory("stack") if self._stack else None
 
-    def closeStreams(self):
-        try:
-            if self.mem_stream_:
-                self.mem_stream_.close()
-            if self.stack_stream_:
-                self.stack_stream_.close()
-        except IOError:
-            pass
-
-    def dispatch(self, frame, event, arg):
+    def _dispatch(self, frame, event, arg):
         """Entry point for event dispatch.
 
         Args:
@@ -334,22 +331,25 @@ class ThreadProfile(object):
             event: the event that triggered the interrupt.
             arg:   the arguments associated with the event.
         """
-        if self.sleep_trak_ and event == "c_call" and arg.__name__ == "sleep":
-            self.sleep_frames_[id(frame)] = self.getMemory_()
-        elif (self.sleep_trak_ and event == "c_return" and
-              arg.__name__ == "sleep" and id(frame) in self.sleep_frames_):
-            mem_before = self.sleep_frames_[id(frame)];
-            del self.sleep_frames_[id(frame)]
-            mem_after = self.getMemory_()
-            self.sleep_accounting_ += mem_after - mem_before
-        if event in self.dispatcher_:
-            self.dispatcher_[event](frame, event, arg)
+        if (self._sleep_trak and event == "c_call" and
+            arg.__module__ in self._sleep_triggers and
+            arg.__name__ in self._sleep_triggers[arg.__module__]):
+            self._sleep_frames[id(frame)] = self._getMemory()
+        elif (self._sleep_trak and (event == "c_return" or
+              event == "c_exception") and id(frame) in self._sleep_frames):
+            mem_before = self._sleep_frames[id(frame)];
+            del self._sleep_frames[id(frame)]
+            mem_after = self._getMemory()
+            self._sleep_accounting += mem_after - mem_before
 
-    def getMemory_(self):
+        if event in self._dispatcher:
+            self._dispatcher[event](frame, event, arg)
+
+    def _getMemory(self):
         """Internally used to fetch memory."""
-        return getProcessMemory() - self.sleep_accounting_
+        return _getProcessMemory() - self._sleep_accounting
 
-    def handleIn_(self, frame, event, arg, name=None):
+    def _handleIn(self, frame, event, arg, name=None, filename=None):
         """Handles a function call.
         Args:
             frame: The frame object passed by CPython.
@@ -357,69 +357,77 @@ class ThreadProfile(object):
             arg: Additional argument passed by CPython, depends on event.
             name: If specified, it is the name of the function being called.
         """
-        if not frame.f_code.co_filename.startswith(self.file_filter_): return
-        if self.stack_:
-            now = str(time()) + "#" if self.times_ else ""
-            self.stack_stream_.write("{0}{1}{2}:{3}:{4}\n".format(
-                " ".join([""] * self.stack_level_), now,
-                frame.f_code.co_filename, frame.f_lineno,
-                name if name else frame.f_code.co_name))
-            self.stack_stream_.flush()
-        self.stack_level_ += 1
-        self.frames_[id(frame)] = (
-            self.getMemory_() if self.mem_ else 0,
-            name if name else frame.f_code.co_name)
+        filename = filename if filename else frame.f_code.co_filename
+        name = name if name else frame.f_code.co_name
+        if not filename.startswith(self._file_filter): return
+        if self._stack:
+            now = str(time()) + "#" if self._times else ""
+            self._stack_stream.write("{0}{1}{2}:{3}:{4}\n".format(
+                " ".join([""] * self._stack_level), now, filename,
+                frame.f_lineno, name))
+            self._stack_stream.flush()
+        self._stack_level += 1
+        self._frames[id(frame)] = (
+            self._getMemory() if self._mem else 0, name, filename)
 
-    def handleOut_(self, frame, event, arg):
+    def _handleOut(self, frame, event, arg):
         """Handles a function return (even in case of exception).
         Args:
             frame: The frame object passed by CPython.
             event: The event that triggered the profile function.
             arg: Additional argument passed by CPython, depends on event.
         """
-        if id(frame) in self.frames_:
-            self.stack_level_ -= 1
-            (mem_before, name) = self.frames_[id(frame)]
-            del self.frames_[id(frame)]
-            if self.mem_:
-                mem_after = self.getMemory_()
+        if id(frame) in self._frames:
+            self._stack_level -= 1
+            (mem_before, name, filename) = self._frames[id(frame)]
+            del self._frames[id(frame)]
+            if self._mem:
+                mem_after = self._getMemory()
                 mem_delta = mem_after - mem_before
-                now = str(time()) + "#" if self.times_ else ""
-                self.mem_stream_.write("{0}{1}:{2}:{3}=>{4}\n".format(
-                    now, frame.f_code.co_filename, frame.f_lineno, name,
-                    mem_delta))
-                self.mem_stream_.flush()
+                now = str(time()) + "#" if self._times else ""
+                self._mem_stream.write("{0}{1}:{2}:{3}=>{4}\n".format(
+                    now, filename, frame.f_lineno, name, mem_delta))
+                self._mem_stream.flush()
 
-    def handleCIn_(self, frame, event, arg):
+    def _handleCIn(self, frame, event, arg):
         """Handles a C function call.
         Args:
             frame: The frame object passed by CPython.
             event: The event that triggered the profile function.
             arg: Additional argument passed by CPython, depends on event.
         """
-        self.handleIn_(frame, event, arg, arg.__name__)
+        self._handleIn(frame, event, arg, arg.__name__, arg.__module__)
 
-    def handleCOut_(self, frame, event, arg):
+    def _handleCOut(self, frame, event, arg):
         """Handles a C function return (even in case of exception).
         Args:
             frame: The frame object passed by CPython.
             event: The event that triggered the profile function.
             arg: Additional argument passed by CPython, depends on event.
         """
-        self.handleOut_(frame, event, arg)
+        self._handleOut(frame, event, arg)
+
+    def closeStreams(self):
+        try:
+            if self._mem_stream:
+                self._mem_stream.close()
+            if self._stack_stream:
+                self._stack_stream.close()
+        except IOError:
+            pass
 
     def logTimestamps(self, enable=True):
         """Enables or disables collection timestamps."""
-        self.times_ = enable
+        self._times = enable
 
     def setFilter(self, filter):
         """Sets the file filter for the thread."""
-        self.file_filter_ = filter
+        self._file_filter = filter
 
     def trackMemory(self, enable=True):
         """Enable or disable memory tracking."""
-        self.mem_ = enable
+        self._mem = enable
 
     def trackStack(self, enable=True):
-        """Enables or disables stack traking."""
-        self.stack_ = enable
+        """Enables or disables stack tracking."""
+        self._stack = enable
