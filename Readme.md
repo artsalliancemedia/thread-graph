@@ -154,13 +154,13 @@ The command line options are explained in
 
 But here is a short idea:
 
-    * process_rebase: decrease the process level absolute memory
-      usage by the given value.
-    * peak: defines what is considered a peak, in KB.
-    * peak_delta_time: how many seconds need to pass between peaks
-      before they can be marked again in the graph.
-    * peak_delta_value: similar to peak_delta_time, but based on
-      the value of the memory peak rather than time.
+  * process_rebase: decrease the process level absolute memory
+    usage by the given value.
+  * peak: defines what is considered a peak, in KB.
+  * peak_delta_time: how many seconds need to pass between peaks
+    before they can be marked again in the graph.
+  * peak_delta_value: similar to peak_delta_time, but based on
+    the value of the memory peak rather than time.
 
 The above command produces an output similar to the following to
 stdout and the _memg.svg_ and _memg.txt_ files.
@@ -180,32 +180,32 @@ This is an example of graph produced by the command above:
 
 There is a lot to talk about here but the core bits are:
 
-    * Axis: the x-axis is the time stamp of the event while the y-axis is
-      a memory size in kilobytes.
+  * Axis: the x-axis is the time stamp of the event while the y-axis is
+    a memory size in kilobytes.
 
-    * Legend: each line is associated to a thread except one that is
-      associated to the process. In applications with many threads gnuplot
-      will run out of colours and make it almost impossible to figure out
-      which line is which thread but it will still provide an idea.
-      To find out the exact mapping you can use the legend file associated
-      to the graph that will be discussed later.
+  * Legend: each line is associated to a thread except one that is
+    associated to the process. In applications with many threads gnuplot
+    will run out of colours and make it almost impossible to figure out
+    which line is which thread but it will still provide an idea.
+    To find out the exact mapping you can use the legend file associated
+    to the graph that will be discussed later.
 
-    * The threads memory: shows memory allocations, computed as the difference
-      in memory allocated before and after a function call.
+  * The threads memory: shows memory allocations, computed as the difference
+    in memory allocated before and after a function call.
 
-    * The process memory: Is the absolute value of the resident set size for
-      the entire process.
-      The process memory is going to be drastically higher than any other
-      measurement since it is an absolute memory value.
-      To prevent thread data to be squashed too much, the absolute memory size
-      of the process can be rebased (the default rebase is Memory - 30MB).
+  * The process memory: Is the absolute value of the resident set size for
+    the entire process.
+    The process memory is going to be drastically higher than any other
+    measurement since it is an absolute memory value.
+    To prevent thread data to be squashed too much, the absolute memory size
+    of the process can be rebased (the default rebase is Memory - 30MB).
 
-    * Peaks: these are the interesting bits.
-      The definition of peak can be specified in the command line so do not
-      worry if they are wrong for you.
-      Each peak is also labelled with an integer that identifies the detailed
-      function return event that justifies that peak.
-      The identifiers can be resolved using the legend file.
+  * Peaks: these are the interesting bits.
+    The definition of peak can be specified in the command line so do not
+    worry if they are wrong for you.
+    Each peak is also labelled with an integer that identifies the detailed
+    function return event that justifies that peak.
+    The identifiers can be resolved using the legend file.
 
 The legend file is a text file that maps the label integers to a string
 with this format: _thread name>file:line:name=>memory delta_.
@@ -246,7 +246,7 @@ for the thread and we use grep to do it:
 
     grep -n "main.py:39:doStuff=>167936" /data/profiling/example/6685/Thread-7.mem
 
-    > 30:1394031433.4#main.py:39:doStuff=>167936
+  > 30:1394031433.4#main.py:39:doStuff=>167936
 
 At line 30 of the memory dump we have an event in the format
 _Unix time#file:line:function=>memory_.
@@ -257,12 +257,12 @@ ProfilerGraph.py has the _decorate-stack_ command to do it:
 
     python ProfilerGraph.py decorate-stack --prefix=/data/code/thread_graph/examples/ /data/profiling/example/6817/Thread-7.mem data/profiling/example/6817/Thread7.stack 30 > examples/trace.tx
 
-    > Scanning memory file looking for the event.
-    > Scanning stack file looking for a matching event.
-    > Reversing memory events of interest.
-    > Parsing stack trace into a tree.
-    > Reconciling trace and memory.
-    > Decorating trace.
+  > Scanning memory file looking for the event.
+  > Scanning stack file looking for a matching event.
+  > Reversing memory events of interest.
+  > Parsing stack trace into a tree.
+  > Reconciling trace and memory.
+  > Decorating trace.
 
 This command outputs status information to stderr and results to stdout.
 You probably want to redirect the results to file more often than not because
@@ -270,11 +270,11 @@ navigation can get trick if you are not in an editor.
 
 But before we look at the result, here is an explanation of the command:
 
-    * prefix: strip the given prefix from file names that start with it.
-    * Path to the memory dump.
-    * Path to the stack trace dump.
-    * A "memory event": this can be the line number extracted from the memory
-      file (as done above) or the line from the memory file itself.
+  * prefix: strip the given prefix from file names that start with it.
+  * Path to the memory dump.
+  * Path to the stack trace dump.
+  * A "memory event": this can be the line number extracted from the memory
+    file (as done above) or the line from the memory file itself.
 
 And now for the output:
 
