@@ -360,16 +360,19 @@ class ThreadProfile(object):
         """Internally used to fetch memory."""
         return _getProcessMemory() - self._sleep_accounting
 
-    def _handleIn(self, frame, event, arg, name=None, filename=None):
+    def _handleIn(self, frame, event, arg, fid=None, name=None, filename=None):
         """Handles a function call.
         Args:
             frame: The frame object passed by CPython.
             event: The event that triggered the profile function.
             arg: Additional argument passed by CPython, depends on event.
+            fid: If specified, it is the id of the frame.
             name: If specified, it is the name of the function being called.
+            filename: If specified, it is the filename containing the function being called.
         """
         filename = filename if filename else frame.f_code.co_filename
         name = name if name else frame.f_code.co_name
+        fid = fid if fid else id(frame)
         if not filename.startswith(self._file_filter): return
         if self._stack:
             now = str(time()) + "#" if self._times else ""
@@ -378,20 +381,22 @@ class ThreadProfile(object):
                 frame.f_lineno, name))
             self._stack_stream.flush()
         self._stack_level += 1
-        self._frames[id(frame)] = (
+        self._frames[fid] = (
             self._getMemory() if self._mem else 0, name, filename)
 
-    def _handleOut(self, frame, event, arg):
+    def _handleOut(self, frame, event, arg, fid=None):
         """Handles a function return (even in case of exception).
         Args:
             frame: The frame object passed by CPython.
             event: The event that triggered the profile function.
             arg: Additional argument passed by CPython, depends on event.
+            fid: If specified, it is the id of the frame.
         """
-        if id(frame) in self._frames:
+        fid = fid if fid else id(frame)
+        if fid in self._frames:
             self._stack_level -= 1
-            (mem_before, name, filename) = self._frames[id(frame)]
-            del self._frames[id(frame)]
+            (mem_before, name, filename) = self._frames[fid]
+            del self._frames[fid]
             if self._mem:
                 mem_after = self._getMemory()
                 mem_delta = mem_after - mem_before
@@ -407,7 +412,8 @@ class ThreadProfile(object):
             event: The event that triggered the profile function.
             arg: Additional argument passed by CPython, depends on event.
         """
-        self._handleIn(frame, event, arg, arg.__name__, arg.__module__)
+        self._handleIn(frame, event, arg, -id(frame), arg.__name__,
+                       arg.__module__)
 
     def _handleCOut(self, frame, event, arg):
         """Handles a C function return (even in case of exception).
@@ -416,7 +422,7 @@ class ThreadProfile(object):
             event: The event that triggered the profile function.
             arg: Additional argument passed by CPython, depends on event.
         """
-        self._handleOut(frame, event, arg)
+        self._handleOut(frame, event, arg, -id(frame))
 
     def closeStreams(self):
         try:
