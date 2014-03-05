@@ -10,6 +10,7 @@ from os import path
 import sys
 from time import time
 import threading
+#import traceback
 
 from pympler.process import ProcessMemoryInfo
 
@@ -107,6 +108,14 @@ class ProcessProfile(object):
     def _dispatch(self, frame, event, arg):
         """Dispatches the event to the appropriate thread profiler."""
         try:
+            # It seems that sometimes, when the VM exits and the profiler
+            # is enabled the dispatch method is called during the tear-down
+            # as well.
+            # We use getpid is None as a sign of tear-down and bail.
+            if getpid is None:
+                self.disable()
+                return None
+
             # When subprocesses are created they will share the profile
             # function and open file descriptors.
             # Check here if the PID changed and react appropriately.
@@ -142,9 +151,11 @@ class ProcessProfile(object):
                 self._threads[thread] = thread_stats
             thread_stats._dispatch(frame, event, arg)
             return self._dispatch
-        except Exception as e:
-            print(e)
-            raise
+        # Used to debug tool.
+        #except Exception as e:
+        #    print(e)
+        #    print(traceback.format_exc())
+        #    raise
         except:
             # Python does not allow exceptions to be raised by the profile
             # function and silently terminates the process if that happens.
@@ -211,7 +222,7 @@ class ProcessProfile(object):
         for thread in self._threads.values():
             thread.setFilter(filter)
 
-    def setProcessMemoryFrequence(self, ferq):
+    def setProcessMemoryFrequence(self, freq):
         """Sets process-level memory collection frequency.
 
         Process-level memory is collected at any event with a sampling
@@ -315,7 +326,7 @@ class ThreadProfile(object):
         self._sleep_trak = track_sleep
         self._sleep_triggers = {
             "time": set(["sleep"]),
-            #"/usr/lib/python2.6/threading.py": set(["acquire"])
+            "/usr/lib/python2.6/threading.py": set(["acquire"]),
             None: set(["acquire"])  # For some reason acquire seems to belong to the None module.
         }
 

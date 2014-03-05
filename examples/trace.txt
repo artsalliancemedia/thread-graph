@@ -1,0 +1,27 @@
+doStuff@main.py:27-39, Time: 22.0300002098 s, Memory: 167936 B
+ randint@/home/stefano/pys/py27/lib/python2.7/random.py:236-240, Time: 0.0 s, Memory: 0 B
+  randrange@/home/stefano/pys/py27/lib/python2.7/random.py:173-214, Time: 0.0 s, Memory: 0 B
+ randint@/home/stefano/pys/py27/lib/python2.7/random.py:236-240, Time: 0.0 s, Memory: 4096 B
+  randrange@/home/stefano/pys/py27/lib/python2.7/random.py:173-214, Time: 0.0 s, Memory: 0 B
+ randint@/home/stefano/pys/py27/lib/python2.7/random.py:236-240, Time: 0.0 s, Memory: 0 B
+  randrange@/home/stefano/pys/py27/lib/python2.7/random.py:173-214, Time: 0.0 s, Memory: 0 B
+ randint@/home/stefano/pys/py27/lib/python2.7/random.py:236-240, Time: 0.0 s, Memory: 4096 B
+  randrange@/home/stefano/pys/py27/lib/python2.7/random.py:173-214, Time: 0.0 s, Memory: 0 B
+ randint@/home/stefano/pys/py27/lib/python2.7/random.py:236-240, Time: 0.0 s, Memory: 0 B
+  randrange@/home/stefano/pys/py27/lib/python2.7/random.py:173-214, Time: 0.0 s, Memory: 0 B
+ randint@/home/stefano/pys/py27/lib/python2.7/random.py:236-240, Time: 0.0 s, Memory: 4096 B
+  randrange@/home/stefano/pys/py27/lib/python2.7/random.py:173-214, Time: 0.0 s, Memory: 0 B
+ randint@/home/stefano/pys/py27/lib/python2.7/random.py:236-240, Time: 0.0 s, Memory: 0 B
+  randrange@/home/stefano/pys/py27/lib/python2.7/random.py:173-214, Time: 0.0 s, Memory: 0 B
+ randint@/home/stefano/pys/py27/lib/python2.7/random.py:236-240, Time: 0.0 s, Memory: 4096 B
+  randrange@/home/stefano/pys/py27/lib/python2.7/random.py:173-214, Time: 0.0 s, Memory: 0 B
+ randint@/home/stefano/pys/py27/lib/python2.7/random.py:236-240, Time: 0.0 s, Memory: 0 B
+  randrange@/home/stefano/pys/py27/lib/python2.7/random.py:173-214, Time: 0.0 s, Memory: 0 B
+ randint@/home/stefano/pys/py27/lib/python2.7/random.py:236-240, Time: 0.0 s, Memory: 0 B
+  randrange@/home/stefano/pys/py27/lib/python2.7/random.py:173-214, Time: 0.0 s, Memory: 0 B
+ randint@/home/stefano/pys/py27/lib/python2.7/random.py:236-240, Time: 0.0 s, Memory: 0 B
+  randrange@/home/stefano/pys/py27/lib/python2.7/random.py:173-214, Time: 0.0 s, Memory: 0 B
+ randint@/home/stefano/pys/py27/lib/python2.7/random.py:236-240, Time: 0.0 s, Memory: 0 B
+  randrange@/home/stefano/pys/py27/lib/python2.7/random.py:173-214, Time: 0.0 s, Memory: 0 B
+ randint@/home/stefano/pys/py27/lib/python2.7/random.py:236-240, Time: 0.0 s, Memory: 0 B
+  randrange@/home/stefano/pys/py27/lib/python2.7/random.py:173-214, Time: 0.0 s, Memory: 0 B

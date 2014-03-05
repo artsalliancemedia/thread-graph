@@ -137,6 +137,7 @@ def memg(args):
                     mem -= args.process_rebase
                     data.write("{0} {1}\n".format(time, mem))
                 temps.append((data, "Process"))
+            data.flush()
             continue
         print("Processing data for thread " + thread, file=sys.stderr)
         with open(profile) as f:

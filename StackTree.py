@@ -47,7 +47,7 @@ class StackTree(object):
            c.reverse_traverse(function)
 
     def store(self, name, value):
-        self.store_[name] = value
+        self._store[name] = value
 
     def traverse(self, function):
         function(self)
@@ -55,7 +55,7 @@ class StackTree(object):
            c.traverse(function)
 
     def value(self):
-        return self.value_
+        return self._value
 
 def build_from_file(trace):
     line = trace.readline().rstrip()
