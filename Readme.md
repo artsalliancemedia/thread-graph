@@ -255,13 +255,18 @@ What we can do with that is find the stack trace from there down and decorate
 it with time and memory information.
 ProfilerGraph.py has the _decorate-stack_ command to do it:
 
-    python ProfilerGraph.py decorate-stack --prefix=/data/code/thread_graph/examples/ /data/profiling/example/6817/Thread-7.mem data/profiling/example/6817/Thread7.stack 30 > examples/trace.tx
+    python ProfilerGraph.py decorate-stack --prefix=/data/code/thread_graph/examples/ /data/profiling/example/6685/Thread-7.mem data/profiling/example/6685/Thread7.stack 30 > examples/trace.tx
 
   > Scanning memory file looking for the event.
+
   > Scanning stack file looking for a matching event.
+
   > Reversing memory events of interest.
+
   > Parsing stack trace into a tree.
+
   > Reconciling trace and memory.
+  
   > Decorating trace.
 
 This command outputs status information to stderr and results to stdout.
